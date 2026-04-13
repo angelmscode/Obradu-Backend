@@ -28,7 +28,7 @@ Sigue estos pasos para levantar el entorno de desarrollo en tu máquina local:
 
 ### 1. Clonar el repositorio
 ```bash
-git clone [https://github.com/TuUsuario/ObraDu_Proyecto_Intermodular.git](https://github.com/TuUsuario/ObraDu_Proyecto_Intermodular.git)
+git clone https://github.com/angelmscode/Obradu-Backend.git
 cd ObraDu_Proyecto_Intermodular/backend
 ```
 ### 2. Crear y activar el entorno virtual
