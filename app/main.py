@@ -3,8 +3,6 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
 from app.routers import usuarios, obras, materiales, vehiculos, asistencias, login
-from app import models
-
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,7 +23,6 @@ app.add_middleware(
 # Conectamos las rutas al núcleo de la app
 app.include_router(usuarios.router)
 app.include_router(obras.router)
-app.include_router(materiales.router)
 app.include_router(vehiculos.router)
 app.include_router(asistencias.router)
 app.include_router(login.router)

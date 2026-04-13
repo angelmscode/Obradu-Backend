@@ -4,6 +4,7 @@ from typing import List
 from app.database import SessionLocal
 from app import models, schemas
 from app.auth import get_usuario_actual
+from app.schemas import SumarStockRequest
 
 router = APIRouter(prefix="/materiales", tags=["Materiales"])
 
@@ -63,7 +64,29 @@ def actualizar_material(material_id: int, material_actualizado: schemas.Material
     db.refresh(material)
     return material
 
+# SUMAR STOCK MATERIAL
+@router.post("/{material_id}/sumar-stock", response_model=schemas.MaterialOut)
+def sumar_stock_material(
+        material_id: int,
+        datos: SumarStockRequest,
+        db: Session = Depends(get_db),
+        usuario_actual: str = Depends(get_usuario_actual)
+):
+    jefe_logueado = db.query(models.Usuario).filter(models.Usuario.email == usuario_actual).first()
+    if jefe_logueado.rol.value != "JEFE":
+        raise HTTPException(status_code=403, detail="Acceso denegado: Solo los JEFES pueden modificar el stock.")
 
+    material = db.query(models.Material).filter_by(id=material_id).first()
+
+    if not material:
+        raise HTTPException(status_code=404, detail="Material no encontrado")
+
+    material.stock_total += datos.cantidad
+
+    db.commit()
+    db.refresh(material)
+
+    return material
 # BORRAR MATERIAL
 @router.delete("/{material_id}")
 def eliminar_material(material_id: int, db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):

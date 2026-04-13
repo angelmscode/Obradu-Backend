@@ -77,14 +77,14 @@ class MaterialBase(BaseModel):
     nombre: str
     stock_total: int = 0
 
+class SumarStockRequest(BaseModel):
+    cantidad: int
 
 class MaterialOut(MaterialBase):
     id: int
 
     class Config:
         from_attributes = True
-
-
 
 # ESQUEMAS PARA ASIGNAR MATERIAL A OBRA (LOGÍSTICA)
 class MaterialObraCreate(BaseModel):
