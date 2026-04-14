@@ -39,9 +39,36 @@ def registrar_vehiculo(vehiculo: schemas.VehiculoBase, db: Session = Depends(get
 
 @router.get("/", response_model=List[schemas.VehiculoOut])
 def obtener_vehiculos(db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
-    return db.query(models.Vehiculo).all()
+    vehiculos_db = db.query(models.Vehiculo).all()
 
+    resultado = []
 
+    for v in vehiculos_db:
+        vehiculo_dict = {
+            "id": v.id,
+            "matricula": v.matricula,
+            "modelo": v.modelo,
+            "estado": v.estado,
+            "usuario_id": None,
+            "nombre_usuario": None
+        }
+
+        if v.estado.name == "EN_USO":
+            reserva = db.query(models.ReservaVehiculo).filter(
+                models.ReservaVehiculo.vehiculo_id == v.id,
+                models.ReservaVehiculo.fecha_devolucion == None
+            ).first()
+
+            if reserva:
+                # Buscar el nombre del empleado usando el ID de la reserva
+                empleado = db.query(models.Usuario).filter(models.Usuario.id == reserva.empleado_id).first()
+                if empleado:
+                    vehiculo_dict["usuario_id"] = empleado.id
+                    vehiculo_dict["nombre_usuario"] = f"{empleado.nombre} {empleado.apellidos}"
+
+        resultado.append(vehiculo_dict)
+
+    return resultado
 # endregion
 
 # region Reservas

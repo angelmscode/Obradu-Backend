@@ -5,6 +5,7 @@ from datetime import date, datetime
 from app.database import SessionLocal
 from app import models, schemas
 from app.auth import get_usuario_actual
+from app.schemas import AsignacionUpdate
 
 router = APIRouter(prefix="/asistencias", tags=["Fichajes y Tareas"])
 
@@ -127,3 +128,27 @@ def obtener_registros_obra(obra_id: int, db: Session = Depends(get_db),
         registros = db.query(models.AsistenciaTarea).filter_by(obra_id=obra_id, empleado_id=usuario_logueado.id).all()
 
     return registros
+
+@router.put("/{tarea_id}/asignar", response_model=schemas.AsistenciaTareaOut)
+def reasignar_tarea(tarea_id: int, datos: AsignacionUpdate, db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
+    usuario_logueado = db.query(models.Usuario).filter(models.Usuario.email == usuario_actual).first()
+
+    if usuario_logueado.rol.value != "JEFE":
+        raise HTTPException(status_code=403, detail="Acceso denegado: Solo los jefes pueden reasignar tareas.")
+
+    tarea = db.query(models.AsistenciaTarea).filter_by(id=tarea_id).first()
+    if not tarea:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+
+    if tarea.tipo.name != "TAREA":
+        raise HTTPException(status_code=400, detail="Solo se pueden reasignar TAREAS, no ASISTENCIAS.")
+
+    nuevo_empleado = db.query(models.Usuario).filter_by(id=datos.empleado_id).first()
+    if not nuevo_empleado:
+        raise HTTPException(status_code=404, detail="El empleado seleccionado no existe.")
+
+    tarea.empleado_id = datos.empleado_id
+    db.commit()
+    db.refresh(tarea)
+
+    return tarea

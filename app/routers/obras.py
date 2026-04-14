@@ -21,17 +21,17 @@ def get_db():
 
 # region Basicos
 @router.post("/", response_model=schemas.ObraOut)
-def crear_obra(obra: schemas.ObraBase, db: Session = Depends(get_db),
+def crear_obra(obra: schemas.ObraCreate, db: Session = Depends(get_db),
                usuario_actual: str = Depends(get_usuario_actual)):
     jefe_logueado = db.query(models.Usuario).filter(models.Usuario.email == usuario_actual).first()
 
     if jefe_logueado.rol.value != "JEFE":
         raise HTTPException(status_code=403, detail="Acceso denegado: Solo los JEFES pueden crear obras.")
 
-    obra.jefe_id = jefe_logueado.id
-
-    # Crear obra
-    nueva_obra = models.Obra(**obra.model_dump())
+    nueva_obra = models.Obra(
+        **obra.model_dump(),
+        jefe_id=jefe_logueado.id
+    )
 
     db.add(nueva_obra)
     db.commit()
@@ -200,6 +200,63 @@ def obtener_materiales_de_obra(obra_id: int, db: Session = Depends(get_db), usua
 
     return lista_materiales
 
+
+@router.put("/{obra_id}/materiales/{material_id}/consumir")
+def consumir_material_obra(
+        obra_id: int,
+        material_id: int,
+        datos: schemas.SumarStockRequest,
+        db: Session = Depends(get_db),
+        usuario_actual: str = Depends(get_usuario_actual)
+):
+    # Buscar la asignación de ese material en esa obra
+    mat_obra = db.query(models.MaterialObra).filter_by(obra_id=obra_id, material_id=material_id).first()
+
+    if not mat_obra:
+        raise HTTPException(status_code=404, detail="Este material no está en la obra.")
+
+    if mat_obra.cantidad_asignada < datos.cantidad:
+        raise HTTPException(status_code=400,
+                            detail=f"No hay suficiente stock. Quedan {mat_obra.cantidad_asignada} uds.")
+
+    # Restar el material de la obra
+    mat_obra.cantidad_asignada -= datos.cantidad
+    db.commit()
+
+    return {"mensaje": "Material consumido correctamente", "restante": mat_obra.cantidad_asignada}
+
+
+@router.put("/{obra_id}/materiales/{material_id}/devolver")
+def devolver_material_obra(
+        obra_id: int,
+        material_id: int,
+        datos: schemas.SumarStockRequest,
+        db: Session = Depends(get_db),
+        usuario_actual: str = Depends(get_usuario_actual)
+):
+    jefe_logueado = db.query(models.Usuario).filter(models.Usuario.email == usuario_actual).first()
+    if jefe_logueado.rol.value != "JEFE":
+        raise HTTPException(status_code=403, detail="Solo los jefes pueden devolver material al almacén.")
+
+    mat_obra = db.query(models.MaterialObra).filter_by(obra_id=obra_id, material_id=material_id).first()
+    if not mat_obra:
+        raise HTTPException(status_code=404, detail="Material no encontrado en la obra.")
+
+    if mat_obra.cantidad_asignada < datos.cantidad:
+        raise HTTPException(status_code=400, detail="No puedes devolver más material del que hay en la obra.")
+
+    # Restar de la obra
+    mat_obra.cantidad_asignada -= datos.cantidad
+
+    # Sumar al almacén global
+    mat_global = db.query(models.Material).filter_by(id=material_id).first()
+    if mat_global:
+        mat_global.stock_total += datos.cantidad
+
+    db.commit()
+    return {"mensaje": "Material devuelto al almacén central correctamente."}
+
+
 # endregion
 
 # region RRHH
@@ -291,7 +348,6 @@ def obtener_estadisticas_panel(db: Session = Depends(get_db), usuario_actual: st
             models.AsistenciaTarea.completada == True
         ).count()
 
-        # Evitar división por cero
         porcentaje = 0.0
         if total_tareas > 0:
             porcentaje = tareas_completadas / total_tareas

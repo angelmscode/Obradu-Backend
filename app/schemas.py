@@ -28,15 +28,17 @@ class ObraBase(BaseModel):
     fecha_inicio: date
     fecha_fin: Optional[date] = None
     presupuesto: Optional[Decimal] = None
-    jefe_id: int
+
+class ObraCreate(ObraBase):
+    pass
 
 class ObraOut(ObraBase):
     id: int
+    jefe_id: int
     progreso: float = 0.0
 
     class Config:
         from_attributes = True
-
 
 # ESQUEMA ASIGNAR EMPLEADOS A OBRA
 class ObraEmpleadoCreate(BaseModel):
@@ -62,6 +64,9 @@ class AsistenciaTareaBase(BaseModel):
 
 class AsistenciaTareaCreate(AsistenciaTareaBase):
     pass
+
+class AsignacionUpdate(BaseModel):
+    empleado_id: int
 
 class AsistenciaTareaOut(AsistenciaTareaBase):
     id: int
@@ -116,6 +121,9 @@ class VehiculoBase(BaseModel):
 
 class VehiculoOut(VehiculoBase):
     id: int
+    usuario_id: Optional[int] = None
+    nombre_usuario: Optional[str] = None
+
     class Config:
         from_attributes = True
 
