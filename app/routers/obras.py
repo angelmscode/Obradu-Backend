@@ -162,19 +162,28 @@ def asignar_material_a_obra(obra_id: int, asignacion: schemas.MaterialObraCreate
     # Restar el stock del almacén general
     material.stock_total -= asignacion.cantidad_asignada
 
-    # Tabla intermedia
-    nueva_asignacion = models.MaterialObra(
+    asignacion_existente = db.query(models.MaterialObra).filter_by(
         obra_id=obra_id,
-        material_id=asignacion.material_id,
-        cantidad_asignada=asignacion.cantidad_asignada
-    )
-    db.add(nueva_asignacion)
+        material_id=asignacion.material_id
+    ).first()
 
-    # Guardar cambios
-    db.commit()
-    db.refresh(nueva_asignacion)
-
-    return nueva_asignacion
+    if asignacion_existente:
+        # Si ya existe, le suma la cantidad
+        asignacion_existente.cantidad_asignada += asignacion.cantidad_asignada
+        db.commit()
+        db.refresh(asignacion_existente)
+        return asignacion_existente
+    else:
+        # Si no existe, creamos la fila por primera vez
+        nueva_asignacion = models.MaterialObra(
+            obra_id=obra_id,
+            material_id=asignacion.material_id,
+            cantidad_asignada=asignacion.cantidad_asignada
+        )
+        db.add(nueva_asignacion)
+        db.commit()
+        db.refresh(nueva_asignacion)
+        return nueva_asignacion
 
 
 # VER MATERIALES ASIGNADOS A UNA OBRA
@@ -219,11 +228,13 @@ def consumir_material_obra(
         raise HTTPException(status_code=400,
                             detail=f"No hay suficiente stock. Quedan {mat_obra.cantidad_asignada} uds.")
 
-    # Restar el material de la obra
-    mat_obra.cantidad_asignada -= datos.cantidad
+    db.query(models.MaterialObra).filter_by(obra_id=obra_id, material_id=material_id).update({
+        "cantidad_asignada": models.MaterialObra.cantidad_asignada - datos.cantidad
+    })
+
     db.commit()
 
-    return {"mensaje": "Material consumido correctamente", "restante": mat_obra.cantidad_asignada}
+    return {"mensaje": "Material consumido correctamente", "restante": mat_obra.cantidad_asignada - datos.cantidad}
 
 
 @router.put("/{obra_id}/materiales/{material_id}/devolver")
@@ -246,7 +257,9 @@ def devolver_material_obra(
         raise HTTPException(status_code=400, detail="No puedes devolver más material del que hay en la obra.")
 
     # Restar de la obra
-    mat_obra.cantidad_asignada -= datos.cantidad
+    db.query(models.MaterialObra).filter_by(obra_id=obra_id, material_id=material_id).update({
+        "cantidad_asignada": models.MaterialObra.cantidad_asignada - datos.cantidad
+    })
 
     # Sumar al almacén global
     mat_global = db.query(models.Material).filter_by(id=material_id).first()
