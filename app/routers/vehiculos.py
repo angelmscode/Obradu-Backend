@@ -17,20 +17,39 @@ def get_db():
         db.close()
 
 
+def obtener_usuario_seguro(db: Session, usuario_actual):
+    if isinstance(usuario_actual, models.Usuario):
+        return usuario_actual
+
+    email_usuario = usuario_actual["email"] if isinstance(usuario_actual, dict) else usuario_actual
+    usuario = db.query(models.Usuario).filter(models.Usuario.email == email_usuario).first()
+
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return usuario
+
 # region CRUD Vehículos
 
 @router.post("/", response_model=schemas.VehiculoOut)
-def registrar_vehiculo(vehiculo: schemas.VehiculoBase, db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
-    jefe_logueado = db.query(models.Usuario).filter(models.Usuario.email == usuario_actual).first()
-    if jefe_logueado.rol.value != "JEFE":
-        raise HTTPException(status_code=403, detail="Acceso denegado: Solo los JEFES pueden registrar nuevos vehículos.")
+def registrar_vehiculo(vehiculo: schemas.VehiculoBase, db: Session = Depends(get_db),
+                       usuario_actual: str = Depends(get_usuario_actual)):
+    # 1. Obtener jefe y empresa
+    jefe_logueado = obtener_usuario_seguro(db, usuario_actual)
 
-    # Comprobar que la matrícula no exista ya
+    if jefe_logueado.rol.value != "JEFE":
+        raise HTTPException(status_code=403,
+                            detail="Acceso denegado: Solo los JEFES pueden registrar nuevos vehículos.")
+
+    # 2. Comprobar que la matrícula no exista ya (a nivel global o de empresa)
     vehiculo_existente = db.query(models.Vehiculo).filter_by(matricula=vehiculo.matricula).first()
     if vehiculo_existente:
         raise HTTPException(status_code=400, detail="Ya existe un vehículo con esta matrícula")
 
-    nuevo_vehiculo = models.Vehiculo(**vehiculo.model_dump())
+    # 3. Crear vehículo asignando la empresa del jefe
+    nuevo_vehiculo = models.Vehiculo(
+        **vehiculo.model_dump(),
+        empresa_id=jefe_logueado.empresa_id
+    )
     db.add(nuevo_vehiculo)
     db.commit()
     db.refresh(nuevo_vehiculo)
@@ -39,7 +58,12 @@ def registrar_vehiculo(vehiculo: schemas.VehiculoBase, db: Session = Depends(get
 
 @router.get("/", response_model=List[schemas.VehiculoOut])
 def obtener_vehiculos(db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
-    vehiculos_db = db.query(models.Vehiculo).all()
+    usuario_logueado = obtener_usuario_seguro(db, usuario_actual)
+
+    # FILTRO: Solo vehículos de su empresa
+    vehiculos_db = db.query(models.Vehiculo).filter(
+        models.Vehiculo.empresa_id == usuario_logueado.empresa_id
+    ).all()
 
     resultado = []
 
@@ -54,13 +78,13 @@ def obtener_vehiculos(db: Session = Depends(get_db), usuario_actual: str = Depen
         }
 
         if v.estado.name == "EN_USO":
+            # Buscamos la reserva activa para este vehículo
             reserva = db.query(models.ReservaVehiculo).filter(
                 models.ReservaVehiculo.vehiculo_id == v.id,
                 models.ReservaVehiculo.fecha_devolucion == None
             ).first()
 
             if reserva:
-                # Buscar el nombre del empleado usando el ID de la reserva
                 empleado = db.query(models.Usuario).filter(models.Usuario.id == reserva.empleado_id).first()
                 if empleado:
                     vehiculo_dict["usuario_id"] = empleado.id
@@ -69,31 +93,40 @@ def obtener_vehiculos(db: Session = Depends(get_db), usuario_actual: str = Depen
         resultado.append(vehiculo_dict)
 
     return resultado
+
+
 # endregion
 
 # region Reservas
 
 @router.post("/reservar", response_model=schemas.ReservaVehiculoOut)
-def reservar_vehiculo(reserva: schemas.ReservaVehiculoCreate, db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
-    # Comprobar que el vehículo existe
-    vehiculo = db.query(models.Vehiculo).filter_by(id=reserva.vehiculo_id).first()
+def reservar_vehiculo(reserva: schemas.ReservaVehiculoCreate, db: Session = Depends(get_db),
+                      usuario_actual: str = Depends(get_usuario_actual)):
+    usuario_logueado = obtener_usuario_seguro(db, usuario_actual)
+
+    # Comprobar que el vehículo existe Y es de la empresa
+    vehiculo = db.query(models.Vehiculo).filter(
+        models.Vehiculo.id == reserva.vehiculo_id,
+        models.Vehiculo.empresa_id == usuario_logueado.empresa_id
+    ).first()
+
     if not vehiculo:
-        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado en tu flota")
 
-    # Comprobar que está disponible
     if vehiculo.estado.name != "DISPONIBLE":
-        raise HTTPException(status_code=400,
-                            detail=f"El vehículo no está disponible. Estado actual: {vehiculo.estado.name}")
+        raise HTTPException(status_code=400, detail=f"El vehículo no está disponible ({vehiculo.estado.name})")
 
-    # Comprobar que el empleado existe
-    empleado = db.query(models.Usuario).filter_by(id=reserva.empleado_id).first()
+    # Comprobar que el empleado existe Y es de la misma empresa
+    empleado = db.query(models.Usuario).filter(
+        models.Usuario.id == reserva.empleado_id,
+        models.Usuario.empresa_id == usuario_logueado.empresa_id
+    ).first()
+
     if not empleado:
-        raise HTTPException(status_code=404, detail="Empleado no encontrado")
+        raise HTTPException(status_code=404, detail="Empleado no encontrado en tu empresa")
 
     # Crear la reserva
     nueva_reserva = models.ReservaVehiculo(**reserva.model_dump())
-
-    # Cambiar el estado del vehículo a EN_USO
     vehiculo.estado = models.EstadoVehiculo.EN_USO
 
     db.add(nueva_reserva)
@@ -103,76 +136,76 @@ def reservar_vehiculo(reserva: schemas.ReservaVehiculoCreate, db: Session = Depe
     return nueva_reserva
 
 
-# DEVOLVER UN VEHÍCULO
 @router.put("/{vehiculo_id}/devolver")
-def devolver_vehiculo(vehiculo_id: int, db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
-    # Buscar el vehículo
-    vehiculo = db.query(models.Vehiculo).filter_by(id=vehiculo_id).first()
+def devolver_vehiculo(vehiculo_id: int, db: Session = Depends(get_db),
+                      usuario_actual: str = Depends(get_usuario_actual)):
+    usuario_logueado = obtener_usuario_seguro(db, usuario_actual)
+
+    # Validar propiedad del vehículo
+    vehiculo = db.query(models.Vehiculo).filter(
+        models.Vehiculo.id == vehiculo_id,
+        models.Vehiculo.empresa_id == usuario_logueado.empresa_id
+    ).first()
+
     if not vehiculo:
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
 
-    # Comprobar que está en uso
     if vehiculo.estado.name != "EN_USO":
-        raise HTTPException(status_code=400, detail="El vehículo no está en uso actualmente")
+        raise HTTPException(status_code=400, detail="El vehículo no está marcado como EN USO")
 
-    # Buscar la reserva activa
     reserva_activa = db.query(models.ReservaVehiculo).filter_by(
         vehiculo_id=vehiculo_id,
         fecha_devolucion=None
     ).first()
 
-    # Cerrar la reserva y liberar el vehículo
     if reserva_activa:
-        reserva_activa.fecha_devolucion = date.today()  # Le pone la fecha de hoy
+        reserva_activa.fecha_devolucion = date.today()
 
     vehiculo.estado = models.EstadoVehiculo.DISPONIBLE
-
     db.commit()
 
-    return {"mensaje": f"Vehículo {vehiculo.matricula} devuelto y DISPONIBLE."}
+    return {"mensaje": f"Vehículo {vehiculo.matricula} devuelto correctamente."}
 
 
-# ENVIAR AL TALLER
 @router.put("/{vehiculo_id}/taller")
 def enviar_a_taller(vehiculo_id: int, db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
-    jefe_logueado = db.query(models.Usuario).filter(models.Usuario.email == usuario_actual).first()
-    if jefe_logueado.rol.value != "JEFE":
-        raise HTTPException(status_code=403, detail="Acceso denegado: Solo los JEFES pueden mandar vehículos al taller.")
+    jefe_logueado = obtener_usuario_seguro(db, usuario_actual)
 
-    # Buscar el vehículo
-    vehiculo = db.query(models.Vehiculo).filter_by(id=vehiculo_id).first()
+    if jefe_logueado.rol.value != "JEFE":
+        raise HTTPException(status_code=403, detail="Solo los JEFES pueden gestionar el taller.")
+
+    vehiculo = db.query(models.Vehiculo).filter(
+        models.Vehiculo.id == vehiculo_id,
+        models.Vehiculo.empresa_id == jefe_logueado.empresa_id
+    ).first()
+
     if not vehiculo:
         raise HTTPException(status_code=404, detail="Vehículo no encontrado")
 
-    # Cambiar el estado
     vehiculo.estado = models.EstadoVehiculo.TALLER
-
     db.commit()
 
     return {"mensaje": f"Vehículo {vehiculo.matricula} enviado al TALLER."}
 
 
-# RECUPERAR VEHÍCULO DEL TALLER (REPARADO)
 @router.put("/{vehiculo_id}/reparado")
-def recuperar_de_taller(vehiculo_id: int, db: Session = Depends(get_db), usuario_actual: str = Depends(get_usuario_actual)):
-    jefe_logueado = db.query(models.Usuario).filter(models.Usuario.email == usuario_actual).first()
+def recuperar_de_taller(vehiculo_id: int, db: Session = Depends(get_db),
+                        usuario_actual: str = Depends(get_usuario_actual)):
+    jefe_logueado = obtener_usuario_seguro(db, usuario_actual)
+
     if jefe_logueado.rol.value != "JEFE":
-        raise HTTPException(status_code=403, detail="Acceso denegado: Solo los JEFES pueden autorizar la salida del taller.")
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
 
-    # Buscar el vehículo
-    vehiculo = db.query(models.Vehiculo).filter_by(id=vehiculo_id).first()
-    if not vehiculo:
-        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+    vehiculo = db.query(models.Vehiculo).filter(
+        models.Vehiculo.id == vehiculo_id,
+        models.Vehiculo.empresa_id == jefe_logueado.empresa_id
+    ).first()
 
-    # Comprobar que realmente está en el taller
-    if vehiculo.estado.name != "TALLER":
-        raise HTTPException(status_code=400, detail="El vehículo no está en el taller actualmente")
+    if not vehiculo or vehiculo.estado.name != "TALLER":
+        raise HTTPException(status_code=400, detail="El vehículo no está en el taller o no existe")
 
-    # Ponerlo de vuelta a disponible
     vehiculo.estado = models.EstadoVehiculo.DISPONIBLE
-
     db.commit()
 
-    return {"mensaje": f"Vehículo {vehiculo.matricula} reparado y de vuelta a la flota (DISPONIBLE)."}
-
+    return {"mensaje": f"Vehículo {vehiculo.matricula} reparado y DISPONIBLE."}
 # endregion

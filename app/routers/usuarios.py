@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_usuario_actual
 from app.database import SessionLocal
-from app import models, schemas
+from app import models, schemas, auth
 from app.utils.security import get_password_hash
 from typing import List
 
@@ -48,16 +48,15 @@ def crear_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db))
 
 #Identificar usuario
 @router.get("/me", response_model=schemas.UsuarioOut)
-def obtener_mi_perfil(
-        db: Session = Depends(get_db),
-        email_actual: str = Depends(get_usuario_actual)  # Leemos el token
-):
-    # Buscar en la BD al usuario dueño de ese email
-    usuario = db.query(models.Usuario).filter(models.Usuario.email == email_actual).first()
+def obtener_mi_perfil(usuario_actual=Depends(auth.get_usuario_actual), db: Session = Depends(get_db)):
+    if isinstance(usuario_actual, models.Usuario):
+        return usuario_actual
 
+    email_actual = usuario_actual["email"] if isinstance(usuario_actual, dict) else usuario_actual
+
+    usuario = db.query(models.Usuario).filter(models.Usuario.email == email_actual).first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
     return usuario
 
 # Ver un solo usuario en concreto por su ID

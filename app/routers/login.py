@@ -15,16 +15,23 @@ router = APIRouter(
 def login(credenciales: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     usuario = db.query(models.Usuario).filter(models.Usuario.email == credenciales.username).first()
 
-    # Si el usuario no existe, o la contraseña no coincide con el Hash de la BDse echa
-    if not usuario or not auth.verify_password(credenciales.password, usuario.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o contraseña incorrectos",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if not usuario:
+        print("ERROR: El email no existe en la base de datos")
+        raise HTTPException(status_code=401, detail="Email no existe")
+
+    if not auth.verify_password(credenciales.password, usuario.password_hash):
+        print(f"ERROR: La contraseña para {usuario.email} no coincide")
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
 
     # Si es correcto, se fabrica el Token de Acceso
-    token = auth.create_access_token(data={"sub": usuario.email, "rol": usuario.rol.name})
+    token = auth.create_access_token(
+        data={
+            "sub": usuario.email,
+            "rol": usuario.rol.name,
+            "empresa_id": usuario.empresa_id,
+            "usuario_id": usuario.id
+        }
+    )
 
     # Se lo devolvemos al usuario
     return {"access_token": token, "token_type": "bearer"}

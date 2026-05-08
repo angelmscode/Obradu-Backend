@@ -15,7 +15,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"], # Permite el GET, POST, PUT, DELETE
     allow_headers=["*"], # Permite los tokens
 )
@@ -26,6 +26,7 @@ app.include_router(obras.router)
 app.include_router(vehiculos.router)
 app.include_router(asistencias.router)
 app.include_router(login.router)
+app.include_router(materiales.router)
 
 @app.get("/")
 def inicio():

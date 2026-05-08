@@ -1,4 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Date, Boolean, Enum, DateTime, Numeric
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 from datetime import datetime
 
@@ -26,9 +28,15 @@ class TipoUnidad(str, enum.Enum):
     SACOS = "sacos"
 
 # Tablas Principales
+class Empresa(Base):
+    __tablename__ = "empresas"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    nombre = Column(String(100), unique=True, nullable=False)
+
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False) # NUEVO
     nombre = Column(String(100), nullable=False)
     apellidos = Column(String(100), nullable=False)
     email = Column(String(150), unique=True, index=True, nullable=False)
@@ -38,6 +46,7 @@ class Usuario(Base):
 class Vehiculo(Base):
     __tablename__ = "vehiculos"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False) # NUEVO
     matricula = Column(String(20), unique=True, nullable=False)
     modelo = Column(String(100), nullable=False)
     estado = Column(Enum(EstadoVehiculo), server_default="DISPONIBLE")
@@ -45,19 +54,20 @@ class Vehiculo(Base):
 class Material(Base):
     __tablename__ = "materiales"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False) # NUEVO
     nombre = Column(String(150), nullable=False)
     stock_total = Column(Integer, server_default="0")
 
 class Obra(Base):
     __tablename__ = "obras"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    empresa_id = Column(Integer, ForeignKey("empresas.id", ondelete="CASCADE"), nullable=False) # NUEVO
     nombre = Column(String(150), nullable=False)
     direccion = Column(String(255), nullable=False)
     fecha_inicio = Column(Date, nullable=False)
     fecha_fin = Column(Date, nullable=True)
     presupuesto = Column(Numeric(10, 2), nullable=True)
     jefe_id = Column(Integer, ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
-
 # Tablas intermedias
 class ObraEmpleado(Base):
     __tablename__ = "obras_empleados"
@@ -92,3 +102,14 @@ class AsistenciaTarea(Base):
     hora_entrada = Column(DateTime, default= datetime.now)
     hora_salida = Column(DateTime, nullable=True)
     completada = Column(Boolean, server_default="0")
+    materiales_consumidos = relationship("MaterialTarea", back_populates="tarea")
+
+class MaterialTarea(Base):  # NUEVA TABLA
+    __tablename__ = "materiales_tarea"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    tarea_id = Column(Integer, ForeignKey("asistencias_tareas.id", ondelete="CASCADE"), nullable=False)
+    material_id = Column(Integer, ForeignKey("materiales.id", ondelete="CASCADE"), nullable=False)
+    cantidad = Column(Numeric(10, 2), nullable=False)
+
+    tarea = relationship("AsistenciaTarea", back_populates="materiales_consumidos")
+    material = relationship("Material")

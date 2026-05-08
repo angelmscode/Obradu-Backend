@@ -5,6 +5,8 @@ from passlib.context import CryptContext
 from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
+from app import models, database
 
 # Cargar las variables del .env
 load_dotenv()
@@ -30,7 +32,6 @@ def verify_password(plain_password: str, hashed_password: str):
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    # Utcnow para evitar problemas con las zonas horarias en los tokens
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
 
@@ -38,7 +39,10 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 
-def get_usuario_actual(token: str = Depends(oauth2_scheme)):
+def get_usuario_actual(
+        token: str = Depends(oauth2_scheme),
+        db: Session = Depends(database.get_db)
+):
     error_credenciales = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No tienes permiso o tu sesión ha caducado",
@@ -53,4 +57,22 @@ def get_usuario_actual(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise error_credenciales
 
-    return email
+    usuario = db.query(models.Usuario).filter(models.Usuario.email == email).first()
+
+    if usuario is None:
+        raise error_credenciales
+
+    return usuario
+
+
+def obtener_usuario_seguro(db: Session, usuario_actual):
+    if isinstance(usuario_actual, models.Usuario):
+        return usuario_actual
+
+    email_usuario = usuario_actual["email"] if isinstance(usuario_actual, dict) else usuario_actual
+    usuario = db.query(models.Usuario).filter(models.Usuario.email == email_usuario).first()
+
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return usuario
+
