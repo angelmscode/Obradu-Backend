@@ -1,13 +1,12 @@
-#Creacion de contratos de datos
-
-from pydantic import BaseModel, EmailStr, Field
+# Creación de contratos de datos
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import date, datetime
 from decimal import Decimal
 from app.models import RolUsuario, EstadoVehiculo, TipoAsistencia
 
 
-# ESQUEMAS DE EMPRESA
+# EMPRESA
 class EmpresaBase(BaseModel):
     nombre: str
 
@@ -19,7 +18,8 @@ class EmpresaOut(EmpresaBase):
     class Config:
         from_attributes = True
 
-# ESQUEMAS USUARIOS
+
+# USUARIOS
 class UsuarioBase(BaseModel):
     nombre: str
     apellidos: str
@@ -28,18 +28,17 @@ class UsuarioBase(BaseModel):
 
 class UsuarioCreate(UsuarioBase):
     password: str
-    # El empresa_id no suele pedirse en el registro manual 
-    # si el Jefe es quien crea al empleado
-    empresa_id: Optional[int] = None 
+    empresa_id: Optional[int] = None  # Se asigna internamente desde el jefe
 
 class UsuarioOut(UsuarioBase):
     id: int
-    empresa: Optional[EmpresaOut] = None
     empresa_id: int
+    empresa: Optional[EmpresaOut] = None
     class Config:
         from_attributes = True
 
-# ESQUEMA OBRAS
+
+# OBRAS
 class ObraBase(BaseModel):
     nombre: str
     direccion: str
@@ -58,11 +57,11 @@ class ObraOut(ObraBase):
     class Config:
         from_attributes = True
 
-# ESQUEMAS LOGÍSTICA / MATERIALES
+
+# MATERIALES (inventario global)
 class MaterialBase(BaseModel):
     nombre: str
     stock_total: int = 0
-    # No incluimos empresa_id aquí porque se asigna internamente
 
 class MaterialOut(MaterialBase):
     id: int
@@ -73,6 +72,8 @@ class MaterialOut(MaterialBase):
 class SumarStockRequest(BaseModel):
     cantidad: int
 
+
+# MATERIALES EN OBRA (logística)
 class MaterialObraCreate(BaseModel):
     material_id: int
     cantidad_asignada: int
@@ -85,7 +86,49 @@ class MaterialObraOut(BaseModel):
     class Config:
         from_attributes = True
 
-# ESQUEMAS RRHH / ASIGNACIONES
+class ObraMaterialListaOut(BaseModel):
+    id: int
+    material_nombre: str
+    cantidad_asignada: int
+    class Config:
+        from_attributes = True
+
+
+# VEHÍCULOS
+
+class VehiculoBase(BaseModel):
+    matricula: str
+    modelo: str
+    estado: EstadoVehiculo = EstadoVehiculo.DISPONIBLE
+
+class VehiculoOut(VehiculoBase):
+    id: int
+    empresa_id: int
+    usuario_id: Optional[int] = None
+    nombre_usuario: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+
+# RESERVAS DE VEHÍCULOS
+
+class ReservaVehiculoCreate(BaseModel):
+    vehiculo_id: int
+    empleado_id: int
+    fecha_reserva: date
+
+class ReservaVehiculoOut(BaseModel):
+    id: int
+    vehiculo_id: int
+    empleado_id: int
+    fecha_reserva: date
+    fecha_devolucion: Optional[date] = None
+    class Config:
+        from_attributes = True
+
+
+# ASIGNACIONES OBRA-EMPLEADO
+
 class ObraEmpleadoCreate(BaseModel):
     empleado_id: int
     fecha_asignacion: date
@@ -98,32 +141,8 @@ class ObraEmpleadoOut(BaseModel):
     class Config:
         from_attributes = True
 
-# ESQUEMAS VEHÍCULOS
-class VehiculoBase(BaseModel):
-    matricula: str
-    modelo: str
-    estado: EstadoVehiculo = EstadoVehiculo.DISPONIBLE
 
-class VehiculoOut(VehiculoBase):
-    id: int
-    empresa_id: int
-    usuario_id: Optional[int] = None
-    nombre_usuario: Optional[str] = None
-    class Config:
-        from_attributes = True
-
-class ReservaVehiculoCreate(BaseModel):
-    vehiculo_id: int
-    empleado_id: int
-    fecha_reserva: date
-
-class ReservaVehiculoOut(ReservaVehiculoCreate):
-    id: int
-    fecha_devolucion: Optional[date] = None
-    class Config:
-        from_attributes = True
-
-# ESQUEMAS ASISTENCIAS / TAREAS
+# ASISTENCIAS Y TAREAS
 class AsistenciaTareaBase(BaseModel):
     obra_id: int
     tipo: TipoAsistencia
@@ -131,110 +150,29 @@ class AsistenciaTareaBase(BaseModel):
     fecha: date
 
 class AsistenciaTareaCreate(AsistenciaTareaBase):
-    empleado_id: Optional[int] = None 
-
-class AsistenciaTareaOut(AsistenciaTareaBase):
-    id: int
-    empleado_id: int
-    hora_entrada: datetime
-    hora_salida: Optional[datetime] = None
-    completada: bool
-    class Config:
-        from_attributes = True
-
-class AsignacionUpdate(BaseModel):
-    empleado_id: int
-    
-class MaterialTareaOut(BaseModel):
-    id: int
-    material_nombre: Optional[str] = None
-    cantidad: float
-
-class AsistenciaTareaOut(AsistenciaTareaBase):
-    id: int
-    completada: Optional[bool] = None
-    hora_entrada: Optional[datetime] = None
-    hora_salida: Optional[datetime] = None
-    materiales_consumidos: List[MaterialTareaOut] = []
-
-    class Config:
-        from_attributes = True
-
-# ESQUEMAS MATERIALES
-class MaterialBase(BaseModel):
-    nombre: str
-    stock_total: int = 0
-
-class SumarStockRequest(BaseModel):
-    cantidad: int
-
-class MaterialOut(MaterialBase):
-    id: int
-    empresa_id: int
-
-    class Config:
-        from_attributes = True
-
-
+    empleado_id: Optional[int] = None
 
 class MaterialTareaCreate(BaseModel):
     material_id: int
     cantidad: float
 
-
-
-
-# ESQUEMAS PARA ASIGNAR MATERIAL A OBRA (LOGÍSTICA)
-class MaterialObraCreate(BaseModel):
-    material_id: int
-    cantidad_asignada: int
-
-class MaterialObraOut(BaseModel):
+class MaterialTareaOut(BaseModel):
     id: int
-    obra_id: int
-    material_id: int
-    cantidad_asignada: int
-
+    material_nombre: Optional[str] = None
+    cantidad: float
     class Config:
         from_attributes = True
 
-class ObraMaterialListaOut(BaseModel):
+# Versión con materiales consumidos
+class AsistenciaTareaOut(AsistenciaTareaBase):
     id: int
-    material_nombre: str
-    cantidad_asignada: int
-
-    class Config:
-        from_attributes = True
-
-# ESQUEMAS VEHÍCULOS
-class VehiculoBase(BaseModel):
-    matricula: str
-    modelo: str
-    estado: EstadoVehiculo = EstadoVehiculo.DISPONIBLE
-
-class VehiculoOut(VehiculoBase):
-    id: int
-    empresa_id: int
-    usuario_id: Optional[int] = None
-    nombre_usuario: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-# ESQUEMAS RESERVAS VEHÍCULOS
-class ReservaVehiculoCreate(BaseModel):
-    vehiculo_id: int
     empleado_id: int
-    fecha_reserva: date
-
-class ReservaVehiculoOut(BaseModel):
-    id: int
-    vehiculo_id: int
-    empleado_id: int
-    fecha_reserva: date
-    fecha_devolucion: Optional[date] = None
-
+    completada: Optional[bool] = None
+    hora_entrada: Optional[datetime] = None
+    hora_salida: Optional[datetime] = None
+    materiales_consumidos: List[MaterialTareaOut] = []
     class Config:
         from_attributes = True
 
-
+class AsignacionUpdate(BaseModel):
+    empleado_id: int

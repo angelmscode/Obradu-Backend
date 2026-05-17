@@ -2,20 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import date, datetime
-from app.database import SessionLocal
+from app.database import SessionLocal, get_db
 from app import models, schemas
 from app.auth import get_usuario_actual, obtener_usuario_seguro
 from app.schemas import AsignacionUpdate
 
 router = APIRouter(prefix="/asistencias", tags=["Fichajes y Tareas"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post("/", response_model=schemas.AsistenciaTareaOut)

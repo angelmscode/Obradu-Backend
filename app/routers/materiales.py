@@ -1,21 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from app.database import SessionLocal
+from app.database import SessionLocal, get_db
 from app import models, schemas
 from app.auth import get_usuario_actual, obtener_usuario_seguro
 from app.schemas import SumarStockRequest
 
 router = APIRouter(prefix="/materiales", tags=["Materiales"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 
 # CREAR MATERIAL
 @router.post("/", response_model=schemas.MaterialOut)
@@ -23,7 +14,7 @@ def crear_material(material: schemas.MaterialBase, db: Session = Depends(get_db)
                    usuario_actual: dict = Depends(get_usuario_actual)):
     jefe_logueado = obtener_usuario_seguro(db, usuario_actual)
     if jefe_logueado.rol.value != "JEFE":
-        raise HTTPException(status_code=403,
+        raise HTTPException(status_code=403,    
                             detail="Acceso denegado: Solo los JEFES pueden añadir materiales al almacén.")
 
     # Guardamos el material asignándole el ID de la empresa del jefe

@@ -4,7 +4,7 @@ from typing import List
 from app.database import SessionLocal
 from app import models, schemas
 from datetime import date
-from app.auth import get_usuario_actual
+from app.auth import get_usuario_actual, obtener_usuario_seguro
 
 router = APIRouter(prefix="/vehiculos", tags=["Vehículos"])
 
@@ -16,17 +16,6 @@ def get_db():
     finally:
         db.close()
 
-
-def obtener_usuario_seguro(db: Session, usuario_actual):
-    if isinstance(usuario_actual, models.Usuario):
-        return usuario_actual
-
-    email_usuario = usuario_actual["email"] if isinstance(usuario_actual, dict) else usuario_actual
-    usuario = db.query(models.Usuario).filter(models.Usuario.email == email_usuario).first()
-
-    if not usuario:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return usuario
 
 # region CRUD Vehículos
 
@@ -74,6 +63,7 @@ def obtener_vehiculos(db: Session = Depends(get_db), usuario_actual: str = Depen
             "modelo": v.modelo,
             "estado": v.estado,
             "usuario_id": None,
+            "empresa_id": v.empresa_id,
             "nombre_usuario": None
         }
 
