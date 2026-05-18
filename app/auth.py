@@ -18,7 +18,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
 # Configuración del encriptador de contraseñas
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Lector de tarjetas
+# Esquema de seguridad: Extractor de Tokens JWT en las peticiones HTTP
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
 

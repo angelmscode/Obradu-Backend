@@ -20,6 +20,13 @@ class EmpresaOut(EmpresaBase):
 
 
 # USUARIOS
+class RegistroJefeConEmpresa(BaseModel):
+    nombre_empresa: str
+    nombre: str
+    apellidos: str
+    email: EmailStr
+    password: str
+
 class UsuarioBase(BaseModel):
     nombre: str
     apellidos: str
@@ -28,7 +35,6 @@ class UsuarioBase(BaseModel):
 
 class UsuarioCreate(UsuarioBase):
     password: str
-    empresa_id: Optional[int] = None  # Se asigna internamente desde el jefe
 
 class UsuarioOut(UsuarioBase):
     id: int

@@ -1,8 +1,9 @@
 # ENDPOINT USUARIOS
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from starlette import status
 
-from app.auth import get_usuario_actual, obtener_usuario_seguro
+from app.auth import get_usuario_actual, obtener_usuario_seguro, pwd_context
 from app.database import get_db
 from app import models, schemas, auth
 from app.utils.security import get_password_hash
@@ -11,8 +12,46 @@ from typing import List
 # ROUTER USUARIOS
 router = APIRouter(prefix="/usuarios", tags=["Usuarios"])
 
+#Router para registrar un jefe nuevo junto a su empresa
+@router.post("/registro-jefe", status_code=status.HTTP_201_CREATED)
+def registrar_jefe_y_empresa(datos: schemas.RegistroJefeConEmpresa, db: Session = Depends(get_db)):
+    # Validar si la empresa ya existe
+    empresa_existente = db.query(models.Empresa).filter(models.Empresa.nombre == datos.nombre_empresa).first()
+    if empresa_existente:
+        raise HTTPException(status_code=400, detail="El nombre de la empresa ya está registrado")
 
-@router.post("/registro", response_model=schemas.UsuarioOut)
+    # Validar si el email del usuario ya existe
+    email_existente = db.query(models.Usuario).filter(models.Usuario.email == datos.email).first()
+    if email_existente:
+        raise HTTPException(status_code=400, detail="El correo electrónico ya está registrado")
+
+    try:
+        # Crear la nueva empresa
+        nueva_empresa = models.Empresa(nombre=datos.nombre_empresa)
+        db.add(nueva_empresa)
+        db.flush()
+
+        # CORRECCIÓN: Usar get_password_hash que ya está importada arriba correctamente
+        password_encriptada = get_password_hash(datos.password)
+
+        nuevo_jefe = models.Usuario(
+            empresa_id=nueva_empresa.id,
+            nombre=datos.nombre,
+            apellidos=datos.apellidos,
+            email=datos.email,
+            password_hash=password_encriptada,
+            rol="JEFE"  # Se asigna el rol plano que procesa tu BD
+        )
+        db.add(nuevo_jefe)
+        db.commit()  # Se guardan ambos registros a la vez en MariaDB de manera atómica
+
+        return {"mensaje": "Empresa y Jefe creados correctamente", "empresa_id": nueva_empresa.id}
+
+    except Exception as e:
+        db.rollback()  # Si algo explota, deshace para no dejar datos basura
+        raise HTTPException(status_code=500, detail=f"Error interno en el servidor: {str(e)}")
+
+@router.post("/registro", response_model=schemas.UsuarioOut, status_code=status.HTTP_201_CREATED)
 def crear_usuario(
     usuario: schemas.UsuarioCreate,
     db: Session = Depends(get_db),

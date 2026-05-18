@@ -11,15 +11,14 @@ app = FastAPI(
     description="Backend profesional para gestión de obras"
 )
 
-# Configuracion CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"], # Permite el GET, POST, PUT, DELETE
-    allow_headers=["*"], # Permite los tokens
+    allow_origins=["https://cloning-sullen-eel.ngrok-free.dev"],
+    allow_origin_regex=r"http://localhost:.*",  # Acepta cualquier puerto de localhost
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
 # Conectamos las rutas al núcleo de la app
 app.include_router(usuarios.router)
 app.include_router(obras.router)
