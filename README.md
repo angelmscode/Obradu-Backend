@@ -54,7 +54,7 @@ Para que el proyecto funcione en tu equipo, debes crear tu propio archivo llamad
 
 ```bash
 DATABASE_URL="mysql+pymysql://tu_usuario:tu_contraseña@localhost:3306/obradu"
-SECRET_KEY=""
+SECRET_KEY="poncualquierclaveaqui"
 ALGORITHM="HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 ```
